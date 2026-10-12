@@ -23,6 +23,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 
@@ -101,11 +102,64 @@ def latest_date(rows):
 
 
 # ---------- 归因：诊断与改写分离，只输出诊断，绝不改文件 ----------
+def clean_llm_output(out):
+    """清理 LLM 输出污染。
+
+    经验来源（已踩过的坑）：某些 infer CLI 的 stdout 混着 config warnings 面板与元信息，
+    直接取全文会得到空或垃圾。定位最后一次 outputs: N，取其后的内容。
+    """
+    ms = list(re.finditer(r"outputs:\s*(\d+)", out))
+    if not ms:
+        # 没有 outputs 标记 = 模型根本没返回内容（可能只吐了 config warnings 面板）
+        # 必须判为空，否则会把告警面板当成归因正文写进报告
+        return ""
+    if int(ms[-1].group(1)) == 0:
+        return ""
+    return out[ms[-1].end():].strip()
+
+
+def call_llm(cfg, prompt, timeout=90):
+    """调用 LLM。llm_cmd 支持 {PROMPT} 占位符（推荐）；否则退化为 stdin 传入。
+
+    固化三条踩坑经验：
+      1. stdin 必须 DEVNULL —— 非 TTY 下继承 stdin 会让 CLI 挂起等待输入（实测必现：
+         含换行的长 prompt 每次都挂到 timeout；短 prompt 侥幸不死，极易被误判为"模型慢"）
+      2. 不要把 OPENCLAW_HOME 带进主进程环境（会导致 Unknown model）
+      3. 输出要清洗（见 clean_llm_output）
+      3. provider 间歇性失败 → 重试 3 次，全空则明确返回空（由上层标注，不静默）
+    """
+    tpl = (cfg.get("llm_cmd") or "").strip()
+    if not tpl:
+        return ""
+    env = {k: v for k, v in os.environ.items() if k != "OPENCLAW_HOME"}
+    for _ in range(2):
+        try:
+            # ⚠️ stdin 必须显式 DEVNULL：非 TTY 下继承的 stdin 会让 CLI 挂起等待输入
+            # （实测：同一条命令，短 prompt 恰好不死，含换行的长 prompt 必挂起直到 timeout）
+            if "{PROMPT}" in tpl:
+                cmd = tpl.replace("{PROMPT}", shlex.quote(prompt))
+                r = subprocess.run(cmd, shell=True, capture_output=True,
+                                   text=True, timeout=timeout, env=env,
+                                   stdin=subprocess.DEVNULL)
+            else:
+                r = subprocess.run(tpl, shell=True, input=prompt, capture_output=True,
+                                   text=True, timeout=timeout, env=env,
+                                   stdin=subprocess.DEVNULL)
+            txt = clean_llm_output(r.stdout or "")
+            if txt:
+                return txt
+        except subprocess.TimeoutExpired:
+            continue
+        except Exception:
+            continue
+    return ""
+
+
 def attribute(cfg, relapsed, hits):
-    """调用配置里的 llm_cmd 做根因分析。缺失则明确降级（不静默失败）。"""
+    """调用配置里的 llm_cmd 做根因分析。缺失或失败则明确降级（不静默失败）。"""
     if not cfg.get("llm_cmd"):
         return {}, "⚠️ 未配置 llm_cmd，跳过归因（显式降级，非静默失败）"
-    results = {}
+    results, failed = {}, []
     for cat in relapsed:
         ev = "\n".join(f"- {t[:130]}" for _, _, t in hits[cat]["incident"][:5])
         prompt = (
@@ -118,14 +172,12 @@ def attribute(cfg, relapsed, hits):
             f"问题类别：{cat}\n事故次数：{len(hits[cat]['incident'])}\n"
             f"已有条款数：{len(hits[cat]['rule'])}\n证据：\n{ev}\n"
         )
-        try:
-            r = subprocess.run(cfg["llm_cmd"], shell=True, input=prompt,
-                               capture_output=True, text=True, timeout=120)
-            out = (r.stdout or "").strip()
-        except Exception as e:
-            out = f"调用失败：{e}"
-        results[cat] = out
-    return results, None
+        out = call_llm(cfg, prompt)
+        results[cat] = out or "（LLM 调用失败或返回空，已重试 2 次）"
+        if not out:
+            failed.append(cat)
+    note = "⚠️ 以下类别归因失败（已重试，非静默跳过）：" + "、".join(failed) if failed else None
+    return results, note
 
 
 def trend(cfg, hits, today):

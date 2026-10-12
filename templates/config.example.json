@@ -7,9 +7,7 @@
   ],
   "out_dir": "~/your-agent/checkpoints/memory",
   "policy_dir": "~/your-agent/policy",
-
   "patterns": {},
-
-  "llm_cmd": "openclaw infer model run --model tencent_coding_plan/tc-code-latest",
+  "llm_cmd": "openclaw infer model run --model <your-model> --prompt {PROMPT}",
   "notify_cmd": ""
 }
