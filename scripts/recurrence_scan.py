@@ -210,6 +210,8 @@ def main():
     ap.add_argument("--attr", action="store_true", help="LLM 归因（诊断与改写分离）")
     ap.add_argument("--trend", action="store_true", help="纵向追踪（与上期对比）")
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--top", type=int, default=3,
+                   help="只归因事故最多的 N 类（LLM 串行调用较慢，默认 3）")
     ap.add_argument("--notify", action="store_true", help="有复发时通知")
     args = ap.parse_args()
     if args.all:
@@ -242,8 +244,9 @@ def main():
 
     attrs, attr_note = ({}, None)
     if args.attr:
-        attrs, attr_note = attribute(cfg, relapsed, hits)
-        L += ["", "## 根因分析（诊断与改写分离 — 只诊断，不改文件）", ""]
+        targets = relapsed[:args.top]
+        attrs, attr_note = attribute(cfg, targets, hits)
+        L += ["", f"## 根因分析（诊断与改写分离 — 只诊断，不改文件）· 归因 top{len(targets)}/{len(relapsed)}", ""]
         if attr_note:
             L.append(attr_note)
         for c, out in attrs.items():
