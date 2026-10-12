@@ -55,9 +55,12 @@ def resolve_bases(cfg):
     直接当系统绝对路径查会全部误报为"不存在"（实测 6 处里 3 处是误报）。
     必须多根尝试：工作区根 / memory 根 / 配置里额外指定的根。
     """
-    idx = os.path.expanduser(cfg["dream"]["memory_index"])
-    ws = os.path.dirname(idx)
-    bases = [ws, os.path.join(ws, "memory")]
+    mi = cfg["dream"]["memory_index"]
+    paths = mi if isinstance(mi, list) else [mi]
+    bases = []
+    for p in paths:
+        w = os.path.dirname(os.path.expanduser(p))
+        bases += [w, os.path.join(w, "memory")]
     bases += [os.path.expanduser(r) for r in cfg["dream"].get("extra_roots", [])]
     return [b for b in bases if b]
 
@@ -200,7 +203,11 @@ def main():
     today = datetime.date.today().isoformat()
 
     topics = list_topics(d["topics_dir"])
-    index_text = read(d["memory_index"])
+    mi = d["memory_index"]
+    paths = mi if isinstance(mi, list) else [mi]
+    # ⚠️ 索引往往不止一份（MEMORY.md 速览 + memory/index.md 检索链）。
+    # 只查一份 → 会把「另一份里有映射」的文件误报成未映射（实测踩过，假阳性）。
+    index_text = "\n".join(read(p) for p in paths)
 
     miss = index_coverage(topics, index_text)
     dup = duplicates(topics)
@@ -208,7 +215,7 @@ def main():
     st = stale(topics, index_text, d.get("stale_days", 90), bases)
 
     L = [f"# Auto Dream · 记忆巩固报告 · {today}", "",
-         f"扫描主题文件 {len(topics)} 个 · 索引 `{os.path.basename(d['memory_index'])}`", "",
+         f"扫描主题文件 {len(topics)} 个 · 索引源 {len(paths)} 份（{'；'.join(paths)}）", "",
          "> ⚠️ 本报告**只出建议，不自动改文件**。所有条目需人工裁定后执行。", "",
          "## 1. 索引覆盖（漏了 = 文件存在但搜不到）", ""]
     if miss:
