@@ -1,0 +1,15 @@
+{
+  "sources": [
+    "~/your-agent/memory/feedback-log.md",
+    "~/your-agent/SOUL.md",
+    "~/your-agent/AGENTS.md",
+    "~/your-agent/checkpoints/memory/*lesson*"
+  ],
+  "out_dir": "~/your-agent/checkpoints/memory",
+  "policy_dir": "~/your-agent/policy",
+
+  "patterns": {},
+
+  "llm_cmd": "openclaw infer model run --model tencent_coding_plan/tc-code-latest",
+  "notify_cmd": ""
+}
