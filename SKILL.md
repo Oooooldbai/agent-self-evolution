@@ -1,7 +1,7 @@
 ---
 name: agent-self-evolution
 description: 让 Agent 从「反复犯同一个错」变成「真的越用越强」。扫描 feedback/日志/教训源，区分「事故 vs 条款」，自动归因根因，纵向追踪事故数是否真的下降，并把经验落成带版本号的策略条目。适用于任何有 feedback 沉淀的 Agent 系统（OpenClaw / Claude Code / Codex / Cursor）。
-version: 0.1.0
+version: 0.3.2
 license: MIT
 ---
 
