@@ -151,6 +151,29 @@ def verify_memory_fact(ctx):
     return True, f"{len(claims)} 条断言全部实测通过"
 
 
+# ---------------- 5. 原文 vs 解析 交叉校验（防漏读型假绿） ----------------
+def pending_verbatim_crosscheck(ctx):
+    """原始文本里明明有关键词，解析结果却是 0 —— 典型解析器漏读。
+
+    事故原型：feedback 日志里有 25 条「待复盘」字样，解析器只认表格格式，
+    自由格式行全被跳过 → 报告显示「待复盘 0」→ 绿得发亮，25 条积压躺了三个月。
+    """
+    text = ctx.get("log_text") or (open(ctx["log_file"], encoding="utf-8").read()
+                                   if ctx.get("log_file") else "")
+    kw = ctx.get("keyword", "待复盘")
+    parsed = ctx.get("parsed_pending")
+    if not text:
+        return False, "缺少 log_text / log_file"
+    if parsed is None:
+        return False, "缺少 parsed_pending"
+    n = text.count(kw)
+    if n > 0 and parsed == 0:
+        return False, f"原文出现「{kw}」{n} 次，但解析出 0 条 → 解析器漏读，报告数据不可信（典型假绿）"
+    if n > 0 and parsed > n:
+        return False, f"解析出 {parsed} 条 > 原文 {n} 次 → 重复解析，数据可疑"
+    return True, f"交叉校验通过：原文「{kw}」{n} 次 vs 解析 {parsed} 条"
+
+
 GATES = {
     "deliver_reconcile": {
         "hook": "before_deliver",
@@ -171,5 +194,10 @@ GATES = {
         "hook": "before_output",
         "fn": verify_memory_fact,
         "desc": "输出前实测：对记忆中的权限/存在/模式断言真跑 stat/test 比对",
+    },
+    "pending_verbatim_crosscheck": {
+        "hook": "pre_green",
+        "fn": pending_verbatim_crosscheck,
+        "desc": "原文关键词 vs 解析结果交叉校验：原文有、解析为 0 → 漏读型假绿",
     },
 }

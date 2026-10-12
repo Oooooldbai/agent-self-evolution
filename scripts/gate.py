@@ -23,7 +23,9 @@ import json
 import os
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# ⚠️ 必须用 realpath：本文件常被软链到别的目录（如 automation/gate.py），
+# 用 abspath 会把 gates/ 指到软链所在目录，结果注册 0 条断言 → 静默假放行
+HERE = os.path.dirname(os.path.realpath(__file__))
 GATES_DIR = os.path.join(HERE, "gates")
 
 
@@ -65,6 +67,11 @@ def run_hook(hook, ctx, gates=None, only=None):
         results.append((name, passed, msg, meta.get("desc", "")))
         if not passed:
             ok = False
+    if not results:
+        # 🔒 该 hook 下一条断言都没挂 = 根本没验证，绝不能算通过
+        # （实测踩到：软链导致 gates 目录找不到，注册 0 条，结果一路放行）
+        return False, [("no_gate_registered", False,
+                        f"hook `{hook}` 下没有注册任何断言 → 视为未通过（防假绿）", "")]
     return ok, results
 
 
