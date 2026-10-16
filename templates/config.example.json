@@ -16,6 +16,10 @@
     "sessions_dir": "~/your-agent/memory/sessions/daily",
     "out_dir": "~/your-agent/checkpoints/memory",
     "stale_days": 90,
+    "insights": {
+      "timeout_sec": 300,
+      "max_files": 7
+    },
     "trigger": {
       "enabled": true,
       "min_hours": 24,

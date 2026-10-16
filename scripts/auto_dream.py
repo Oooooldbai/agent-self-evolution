@@ -87,6 +87,11 @@ def load_config(path):
     if not isinstance(sc.get("rules"), list):
         sc["rules"] = []
     p.setdefault("session_tail_bytes", 1_000_000)
+
+    # ---- 跨会话洞察（LLM 通道，可选）----
+    ins = d.setdefault("insights", {})
+    ins.setdefault("timeout_sec", 300)   # 单次调用超时；headless/agent 类通道冷启动慢
+    ins.setdefault("max_files", 7)       # 读最近几份会话归档
     return cfg
 
 
@@ -502,9 +507,18 @@ def promotion(cfg, topics):
 
 # ===================== 5. 跨会话洞察（LLM，可选） =====================
 def insights(cfg, sessions_dir, llm_cmd):
+    """跨会话洞察（LLM 通道，可选）。
+
+    **通道中立**：优先认 OpenClaw 的 `outputs: N` 标记（取其后的正文）；没有标记就直接用 stdout
+    ——凡"单次问答、答案走 stdout、诊断走 stderr"的 CLI 都能接（如 `dsh --profile headless {PROMPT}`）。
+    非零退出码 / 超时 / 空输出一律**显式报错**，不把失败静默当成"没洞察"。
+    """
+    d = cfg["dream"]
+    ins = d.get("insights", {}) or {}
+    timeout = int(ins.get("timeout_sec", 300))
     if not llm_cmd:
         return "⚠️ 未配置 llm_cmd，跳过洞察（显式降级）"
-    files = sorted(glob.glob(os.path.join(os.path.expanduser(sessions_dir), "*.md")))[-7:]
+    files = sorted(glob.glob(os.path.join(os.path.expanduser(sessions_dir), "*.md")))[-int(ins.get("max_files", 7)):]
     if not files:
         return "无会话归档，跳过"
     corpus = "\n".join(read(f)[-1500:] for f in files)
@@ -513,21 +527,36 @@ def insights(cfg, sessions_dir, llm_cmd):
         "不要复述单日流水，只提炼**跨越多天反复出现**的模式。输出三段：\n"
         "重复模式：<跨会话反复出现的做事方式/偏好/坑，正负向都要，1-3条>\n"
         "新增动向：<最近出现的、以前没有的关注点，1-2条>\n"
-        "建议写入记忆：<一句话，说明该把哪条洞察固化到长期记忆、放哪个主题>\n\n"
+        "建议写入记忆：<一句话，说明该把哪条洞察固化到长期记忆、放哪个主题>\n"
+        "⚠️ 这是一次纯文本提炼：**不要调用任何工具、不要读写任何文件**，直接输出上述三段。\n\n"
         f"会话归档：\n{corpus[:6000]}\n"
     )
     env = {k: v for k, v in os.environ.items() if k != "OPENCLAW_HOME"}
     cmd = (llm_cmd.replace("{PROMPT}", shlex.quote(prompt)) if "{PROMPT}" in llm_cmd else llm_cmd)
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
-                           timeout=150, env=env, stdin=subprocess.DEVNULL)
-        out = (r.stdout or "").strip()
+                           timeout=timeout, env=env, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return (f"⚠️ 洞察调用超时（>{timeout}s，可在 config `dream.insights.timeout_sec` 调大）"
+                f"——非静默失败")
     except Exception as e:
-        return f"调用失败：{e}"
+        return f"⚠️ 调用失败：{e}"
+
+    out = (r.stdout or "").strip()
+    if r.returncode != 0:
+        err = (r.stderr or "").strip().splitlines()
+        tail = err[-1][:300] if err else "无 stderr"
+        return (f"⚠️ 洞察调用失败（exit {r.returncode}）：{tail}"
+                + (f"\n\nstdout 片段：{out[:200]}" if out else ""))
     ms = list(re.finditer(r"outputs:\s*(\d+)", out))
-    if not ms or int(ms[-1].group(1)) == 0:
-        return "（LLM 返回空，已跳过；非静默失败）"
-    return out[ms[-1].end():].strip()
+    if ms:                                     # OpenClaw 格式：取最后一个标记之后的正文
+        if int(ms[-1].group(1)) == 0:
+            return "⚠️ 通道返回 outputs: 0（无输出）——非静默失败"
+        body = out[ms[-1].end():].strip()
+        return body or "⚠️ 通道返回空正文（outputs 标记后无内容）"
+    if not out:                                # 通用通道：stdout 即正文
+        return "⚠️ 通道返回空输出——跳过本次（非静默跳过）"
+    return out
 
 
 def main():

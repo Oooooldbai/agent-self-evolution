@@ -1,7 +1,7 @@
 ---
 name: agent-self-evolution
 description: 让 Agent 从「反复犯同一个错」变成「真的越用越强」。扫描 feedback/日志/教训源，区分「事故 vs 条款」，自动归因根因，纵向追踪事故数是否真的下降，把经验落成带版本号的策略条目，并以 Claude Code L4 规格做 Auto Dream 记忆巩固（24h + ≥5 会话触发，只出报告不自动改）。适用于任何有 feedback 沉淀的 Agent 系统（OpenClaw / Claude Code / Codex / Cursor）。
-version: 0.5.0
+version: 0.6.0
 license: MIT
 ---
 
@@ -78,6 +78,11 @@ python3 scripts/auto_dream.py --config config.json --force     # 手动点火
 - **三重晋升门槛**（召回次数 / 查询多样性 / 来源可信度 → 🟢晋升候选 / 🟡观察 / ⚪沉默）：
   权威信号 = recall-log（配套 `scripts/memory_recall.py log` 记录），兜底 = 会话日志提及近似；
   信号缺失 → 该节**显式降级标注**，不拿 0 当结论。
+- **第 5 项洞察（LLM 通道，可选）**：配 `llm_cmd` 后，`--attr` 把最近 N 份会话归档交给该通道提炼跨会话模式。
+  通道只要求三条：**单次问答 · 答案走 stdout · 诊断走 stderr**（如 `dsh --profile headless {PROMPT}`、
+  `codex exec {PROMPT}`、`openclaw infer model run … --prompt {PROMPT}`）；超时与归档数用
+  `dream.insights.timeout_sec`（默认 300s）/ `dream.insights.max_files`（默认 7）。
+  未配 → 该节显式标注「跳过洞察」；**调用失败 / 超时 / 空输出一律显式报错**，不静默。
 - ⚠️ 从 ≤v0.3.x 升级的部署**必须补配** `dream.trigger.session_globs`（会话信号源路径），
   否则脚本以 exit 2 拒绝跑——信号源配错 = 结论全错，宁可拒绝也不静默放行。
 

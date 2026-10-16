@@ -77,6 +77,10 @@ survey 盲区三：安全只做"进门检查"，而**不受控的技能自进化
 - **三重晋升门槛（Dreaming）**：召回次数 / 查询多样性 / 来源可信度
   → 🟢 晋升候选 / 🟡 观察 / ⚪ 沉默（降级候选）。信号双轨：`memory_recall.py` 记的
   **recall-log**（权威）+ 会话日志提及近似（兜底）；两者皆无 → 该节显式降级标注，**不拿 0 当结论**。
+- **第 5 项洞察走"通道中立"**：配 `llm_cmd`（任何「单次问答 · 答案走 stdout · 诊断走 stderr」的 CLI，
+  例如 `dsh --profile headless {PROMPT}`、`codex exec {PROMPT}`）后，`--attr` 会带出跨会话洞察；
+  未配则该节**显式标注跳过**，调用失败 / 超时 / 空输出也一律显式报错。超时用
+  `dream.insights.timeout_sec`（默认 300s）。
 - **状态**：`<out_dir>/auto-dream.state.json`——**报告成功写出后才推进水位**（没跑成不消耗触发机会，防假绿）。
 
 ```bash
