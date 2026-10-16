@@ -1,7 +1,7 @@
 ---
 name: agent-self-evolution
-description: 让 Agent 从「反复犯同一个错」变成「真的越用越强」。扫描 feedback/日志/教训源，区分「事故 vs 条款」，自动归因根因，纵向追踪事故数是否真的下降，并把经验落成带版本号的策略条目。适用于任何有 feedback 沉淀的 Agent 系统（OpenClaw / Claude Code / Codex / Cursor）。
-version: 0.3.2
+description: 让 Agent 从「反复犯同一个错」变成「真的越用越强」。扫描 feedback/日志/教训源，区分「事故 vs 条款」，自动归因根因，纵向追踪事故数是否真的下降，把经验落成带版本号的策略条目，并以 Claude Code L4 规格做 Auto Dream 记忆巩固（24h + ≥5 会话触发，只出报告不自动改）。适用于任何有 feedback 沉淀的 Agent 系统（OpenClaw / Claude Code / Codex / Cursor）。
+version: 0.4.0
 license: MIT
 ---
 
@@ -15,6 +15,7 @@ license: MIT
 - 你想让 Agent **做完 1000 次任务比第一次强**
 - 你已经有 feedback / 日志 / 教训沉淀，但**不知道它有没有真的变好**
 - 你要给 Agent 建**可持续进化的策略层**（不是写死的 prompt）
+- 你要给 Agent 的记忆层做**定期大扫除**（合并重复 / 清失效 / 晋升有用记忆），但要求**后台自动、到点才跑、且不许自动改**
 
 ## 执行策略（How）
 
@@ -25,7 +26,7 @@ license: MIT
 
 实证：某红线一天内被违反 **4 次**，而该条款早就写在 SOP 里。
 
-### 三步走
+### 四步走
 
 **Step 1 · 扫描：区分「事故」与「条款」**
 
@@ -61,6 +62,31 @@ python3 scripts/recurrence_scan.py --config config.json --trend
 > 本步骤输出：本期 vs 上期的**事故数变化**，以及**闸门安装前后的对比**。
 > 装了闸门到底有没有用？用数据说话，不靠感觉。
 
+**Step 4 · Auto Dream（记忆巩固 · L4 规格，后台到点自动）**
+
+```bash
+python3 scripts/auto_dream.py --config config.json --attr      # 过闸才跑
+python3 scripts/auto_dream.py --config config.json --gate-only # 只判触发闸
+python3 scripts/auto_dream.py --config config.json --force     # 手动点火
+```
+
+- **触发闸（KAIROS 24h + ≥5 新会话）**：两项**同时**满足才真跑——后台每小时调用一次即可，
+  到没到点由脚本自判。退出码语义：`0` 出报告 / `3` 未到点（**正常，不是故障**）/
+  `2` 信号源或配置错误 / `1` 其它失败。状态在 `<out_dir>/auto-dream.state.json`，
+  **报告成功写出后才推进**（没跑成不消耗触发机会，防假绿）。
+- **五项动作**：合并重复 / 删除无效 / 提炼核心模式 / 优化索引 / 跨会话洞察——**全部只出建议，不改文件**。
+- **三重晋升门槛**（召回次数 / 查询多样性 / 来源可信度 → 🟢晋升候选 / 🟡观察 / ⚪沉默）：
+  权威信号 = recall-log（配套 `scripts/memory_recall.py log` 记录），兜底 = 会话日志提及近似；
+  信号缺失 → 该节**显式降级标注**，不拿 0 当结论。
+- ⚠️ 从 ≤v0.3.x 升级的部署**必须补配** `dream.trigger.session_globs`（会话信号源路径），
+  否则脚本以 exit 2 拒绝跑——信号源配错 = 结论全错，宁可拒绝也不静默放行。
+
+```bash
+# 记一次召回（三重门槛的权威信号；id = 记忆条目文件名）
+python3 scripts/memory_recall.py --config config.json log --id topic.md --query "当时的检索词"
+python3 scripts/memory_recall.py --config config.json list    # 召回看板
+```
+
 ### 策略层（Policy）
 
 经验落成 `policy/` 下带版本号的条目，**每条必须四要素齐全**（缺一不可）：
@@ -87,15 +113,16 @@ python3 scripts/recurrence_scan.py --config config.json --trend
 - 该类病灶事故数**连续 2 期为 0** → 标记为已闭环，转入 COLD
 - 归因置信度 < 0.5 → **不改**，只记录（防止把噪声当模式）
 - **安全类条目（凭据/权限/删除/外发）永远不自动改**，必须人工批准
+- Auto Dream 触发闸未到点（exit 3）→ **不跑、不写状态**，等下一轮探测
 
 > survey 盲区三：**安全只做一次性检查**。不受控的技能自进化可能悄悄剥离已有安全约束。
 > 所以本包对安全类策略硬编码"人工批准"闸门。
 
 ## 复用接口（Integration）
 
-- 输入：任意文本源（feedback 日志 / SOUL.md / AGENTS.md / checkpoints）
-- 输出：Markdown 报告 + 策略条目 + 可选 DM 通知
-- 依赖：Python 3 标准库；LLM 归因可选（缺失时降级为不归因，明确标注）
+- 输入：任意文本源（feedback 日志 / SOUL.md / AGENTS.md / checkpoints）+ 会话日志（Auto Dream 触发与召回信号）
+- 输出：Markdown 报告 + 策略条目 + 可选 DM 通知 + recall-log（NDJSON，可回灌）
+- 依赖：Python 3 标准库（压缩会话解压走外部 `zstd` 命令，缺失时显式降级）；LLM 归因/洞察可选（缺失时降级为不调用，明确标注）
 - 适配：OpenClaw / Claude Code / Codex / Cursor 均可（只需改 config.json 里的路径）
 
 ## 安装
@@ -103,6 +130,6 @@ python3 scripts/recurrence_scan.py --config config.json --trend
 ```bash
 git clone https://github.com/Oooooldbai/agent-self-evolution.git
 cd agent-self-evolution
-cp templates/config.example.json config.json   # 改路径
+cp templates/config.example.json config.json   # 改路径；dream.trigger.session_globs 必配
 python3 scripts/recurrence_scan.py --config config.json
 ```

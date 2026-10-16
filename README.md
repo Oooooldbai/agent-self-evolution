@@ -2,7 +2,7 @@
 
 **让 Agent 从「反复犯同一个错」变成「真的越用越强」。**
 
-不是一个"让 Agent 写反思日记"的 prompt，是一套**工程包**：扫描 → 归因 → 纵向追踪 → 落成带版本的策略。
+不是一个"让 Agent 写反思日记"的 prompt，是一套**工程包**：扫描 → 归因 → 纵向追踪 → 落成带版本的策略，再加一层 **Auto Dream 记忆巩固**（Claude Code L4 规格）。
 
 [English below](#english)
 
@@ -31,6 +31,7 @@
 | 2 归因 | `--attr` | 根因 + 建议闸门（**只诊断，不改文件**） |
 | 3 追踪 | `--trend` | 本期 vs 上期事故数变化 |
 | 4 落策略 | 人工按模板写 | `policy/` 下带版本号的四要素条目 |
+| 5 记忆巩固 | `auto_dream.py --config config.json --attr` | Auto Dream 报告（**触发闸 + 三重门槛 + 五动作，只出建议**） |
 
 ### 关键设计 1：区分「事故」与「条款」
 
@@ -62,7 +63,29 @@
 
 survey 盲区三：安全只做"进门检查"，而**不受控的技能自进化可能悄悄剥离已有安全约束**。
 
-本包对 `凭据 / 权限 / 删除 / 外发` 类策略**硬编码人工批准**。
+本包对**凭据 / 权限 / 删除 / 外发**类策略**硬编码人工批准**。
+
+### 关键设计 5：Auto Dream 触发闸（24h + ≥5 会话才跑）
+
+补 Claude Code 记忆四层里缺的 L4「Auto Dream」——后台大扫除：**合并重复 / 删无效 /
+提炼核心模式 / 优化索引 / 跨会话洞察**，只出报告不自动改。
+
+- **触发闸（KAIROS）**：距上次 Dream **≥24h** 且窗口内 **≥5 个新会话**才真跑。
+  后台每小时探测一次，到没到点由脚本自己判——未到点 `exit 3`、信号源没配 `exit 2`，
+  都是**显式拒绝并打印数字**，绝不静默假装跑过；手动点火用 `--force`，只判闸用 `--gate-only`。
+- **三重晋升门槛（Dreaming）**：召回次数 / 查询多样性 / 来源可信度
+  → 🟢 晋升候选 / 🟡 观察 / ⚪ 沉默（降级候选）。信号双轨：`memory_recall.py` 记的
+  **recall-log**（权威）+ 会话日志提及近似（兜底）；两者皆无 → 该节显式降级标注，**不拿 0 当结论**。
+- **状态**：`<out_dir>/auto-dream.state.json`——**报告成功写出后才推进水位**（没跑成不消耗触发机会，防假绿）。
+
+```bash
+python3 scripts/auto_dream.py --config config.json --attr      # 过闸才跑
+python3 scripts/auto_dream.py --config config.json --gate-only # 只判触发闸
+python3 scripts/memory_recall.py --config config.json log --id topic.md --query "检索词"
+```
+
+> ⚠️ 从 ≤v0.3.x 升级的部署**必须补配** `dream.trigger.session_globs`（会话信号源路径），
+> 否则脚本以 `exit 2` 拒绝跑——信号源配错 = 结论全错，宁可拒绝也不静默放行。
 
 ## 安装
 
@@ -90,10 +113,16 @@ cp templates/config.example.json config.json
 python3 scripts/recurrence_scan.py --config config.json --all
 ```
 
-建议挂 cron（每周一次）：
+建议挂 cron（复发检测每周一次）：
 
 ```cron
 0 9 * * 0 /usr/bin/python3 /path/to/scripts/recurrence_scan.py --config /path/to/config.json --all --notify
+```
+
+Auto Dream 建议**每小时探测**（闸门自判到点；未到点 `exit 3` 属正常，不是故障）：
+
+```cron
+0 * * * * /usr/bin/python3 /path/to/scripts/auto_dream.py --config /path/to/config.json --attr
 ```
 
 ## 与其他方案的区别
@@ -107,13 +136,16 @@ python3 scripts/recurrence_scan.py --config config.json --all
 | 策略格式 | 自由文本 | 四要素 + 版本号 + 效果验证 |
 
 > 按 Agent 自进化五层（Memory / Policy / Skill / Tool / Model）对号入座：
-> 多数方案停在 **L1 记忆**，本包目标是 **L2 策略**。
+> 多数方案停在 **L1 记忆**，本包目标是 **L2 策略**，Auto Dream 补的是 **L4 记忆巩固**。
 
 ## 目录
 
 ```
 SKILL.md                     Agent Skill 标准格式（触发/策略/终止/复用接口）
 scripts/recurrence_scan.py   核心脚本（扫描+归因+追踪）
+scripts/auto_dream.py        Auto Dream（L4 记忆巩固：触发闸 + 三重门槛 + 五动作）
+scripts/memory_recall.py     recall-log 协议（三重门槛的权威召回信号）
+scripts/gate.py              通用出口断言框架
 templates/config.example.json
 templates/policy-entry.md    策略条目模板（四要素）
 docs/设计依据.md              survey 要点 + 实证数据 + 迭代记录
@@ -132,5 +164,8 @@ This repo is an engineering kit, not a prompt:
 3. **Track** — period-over-period incident deltas. No existing benchmark tracks whether a
    skill actually improves across feedback rounds; this fills that gap.
 4. **Policy** — versioned entries with four mandatory fields, diff-level changes, rollback.
+5. **Dream** — Claude-Code-L4-style memory consolidation (merge duplicates / drop stale /
+   distill patterns / refresh index / cross-session insights), gated to run only after
+   **24 hours AND 5 new sessions**; report-only, never auto-edits.
 
 MIT. PRs welcome.

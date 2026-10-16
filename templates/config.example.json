@@ -9,5 +9,38 @@
   "policy_dir": "~/your-agent/policy",
   "patterns": {},
   "llm_cmd": "openclaw infer model run --model <your-model> --prompt {PROMPT}",
-  "notify_cmd": ""
+  "notify_cmd": "",
+  "dream": {
+    "memory_index": ["~/your-agent/MEMORY.md", "~/your-agent/memory/index.md"],
+    "topics_dir": "~/your-agent/memory/topics",
+    "sessions_dir": "~/your-agent/memory/sessions/daily",
+    "out_dir": "~/your-agent/checkpoints/memory",
+    "stale_days": 90,
+    "trigger": {
+      "enabled": true,
+      "min_hours": 24,
+      "min_sessions": 5,
+      "session_globs": ["~/.openclaw/agents/<name>/sessions/*.jsonl"]
+    },
+    "promotion": {
+      "recall_log": "~/your-agent/memory/recall-log.ndjson",
+      "session_globs": [],
+      "entry_globs": [],
+      "thresholds": {
+        "recall_min": 3,
+        "diversity_min": 2,
+        "credibility_min": 0.6
+      },
+      "source_credibility": {
+        "default": 0.5,
+        "rules": [
+          { "match": "SOUL.md", "score": 0.9 },
+          { "match": "AGENTS.md", "score": 0.9 },
+          { "match": "00-Inbox", "score": 0.7 },
+          { "match": "sessions/", "score": 0.4 }
+        ]
+      },
+      "session_tail_bytes": 1000000
+    }
+  }
 }
