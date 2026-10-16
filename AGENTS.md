@@ -14,6 +14,7 @@ created: 2026-10-16
 SKILL.md                     Agent Skill 标准格式（触发/策略/终止/复用接口），frontmatter version 必须与最新 commit 同步
 scripts/recurrence_scan.py   核心脚本（扫描+归因+追踪）
 scripts/auto_dream.py        Auto Dream（L4 记忆巩固：触发闸 + 三重门槛 + 五动作）
+scripts/memory_draft.py      L2 写入通道（digest → drafts 素材切片 + 待提炼清单）
 scripts/memory_recall.py     recall-log 协议（三重门槛的权威召回信号）
 scripts/gate.py + gates/     通用出口断言框架
 templates/config.example.json / policy-entry.md
@@ -27,6 +28,7 @@ python3 scripts/recurrence_scan.py --config config.json --all
 python3 scripts/auto_dream.py --config config.json --attr      # 过闸才跑；exit 3=未到点（正常）
 python3 scripts/auto_dream.py --config config.json --gate-only # 只判触发闸
 python3 scripts/memory_recall.py --config config.json list
+python3 scripts/memory_draft.py --config memory.config.json --dry-run   # L2 素材切片（只看要切什么）
 python3 scripts/gate.py --list
 git add -A && git commit && git push                           # 常规提交（老白 2026-10-10 授权免审）
 ```

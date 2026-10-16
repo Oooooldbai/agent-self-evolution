@@ -45,7 +45,10 @@ import subprocess
 import sys
 import time
 
-PATH_RE = re.compile(r"(/[\w./\-]+\.(?:md|json|py|sh|env))|(~/[\w./\-]+\.\w+)")
+# ⚠️ 前置负向断言：路径必须**自成词头**。
+# 踩过：`Identity/profile.md` 这种「相对写法嵌在词中间」会被抓成 `/profile.md` → 误报失效。
+PATH_RE = re.compile(r"(?<![\w/\-])(/[\w./\-]+\.(?:md|json|py|sh|env))"
+                     r"|(?<![\w/\-])(~/[\w./\-]+\.\w+)")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 EXIT_OK, EXIT_FAIL, EXIT_CONF, EXIT_NOTDUE = 0, 1, 2, 3
@@ -453,6 +456,9 @@ def promotion(cfg, topics):
     if sess_files and not unreadable:
         notes.append(f"会话日志近似：{len(sess_files)} 个会话文件全部可读"
                      f"（提及次数=召回 · 不同会话数=查询多样性）")
+    if sess_files:
+        notes.append("⚠️ 会话近似含**本次会话自身**（自指偏差：本任务反复提到的条目会虚高）"
+                     "——权威信号请接 recall-log，单会话命中不要当晋升依据")
 
     # 逐条目合成指标
     rows = []

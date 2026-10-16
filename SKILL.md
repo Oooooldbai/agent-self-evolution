@@ -1,7 +1,7 @@
 ---
 name: agent-self-evolution
 description: 让 Agent 从「反复犯同一个错」变成「真的越用越强」。扫描 feedback/日志/教训源，区分「事故 vs 条款」，自动归因根因，纵向追踪事故数是否真的下降，把经验落成带版本号的策略条目，并以 Claude Code L4 规格做 Auto Dream 记忆巩固（24h + ≥5 会话触发，只出报告不自动改）。适用于任何有 feedback 沉淀的 Agent 系统（OpenClaw / Claude Code / Codex / Cursor）。
-version: 0.4.0
+version: 0.5.0
 license: MIT
 ---
 
@@ -87,6 +87,19 @@ python3 scripts/memory_recall.py --config config.json log --id topic.md --query 
 python3 scripts/memory_recall.py --config config.json list    # 召回看板
 ```
 
+**Step 5 · L2 记忆写入通道（素材切片 · 机械层自动，语义层人工）**
+
+```bash
+python3 scripts/memory_draft.py --config memory.config.json            # 增量：新 digest → drafts/
+python3 scripts/memory_draft.py --config memory.config.json --dry-run  # 只看要切什么
+```
+
+- **只搬素材，不写记忆**：脚本负责「新素材自动出现在记忆库」——否则 L2 必然退化成
+  "靠记得写"，而"靠记得读/写"已被实证无效（条款 8 条、事故仍 6 次）。
+  语义提炼（按四类抽条目 → 写 `topics/` → 在 `MEMORY.md` 登记指针）由会话内 agent + 人裁定。
+- **草稿不是记忆**：`drafts/` 里是原料；`待提炼.md` 由脚本刷新并标陈旧（放太久 = 响亮提醒，不静默烂掉）。
+- 提炼四步别跳：读草稿 → 抽四类条目 → 登记索引（漏登记 = 搜不到，Dream 会报）→ 删草稿。
+
 ### 策略层（Policy）
 
 经验落成 `policy/` 下带版本号的条目，**每条必须四要素齐全**（缺一不可）：
@@ -120,7 +133,7 @@ python3 scripts/memory_recall.py --config config.json list    # 召回看板
 
 ## 复用接口（Integration）
 
-- 输入：任意文本源（feedback 日志 / SOUL.md / AGENTS.md / checkpoints）+ 会话日志（Auto Dream 触发与召回信号）
+- 输入：任意文本源（feedback 日志 / SOUL.md / AGENTS.md / checkpoints）+ 会话日志（Auto Dream 触发与召回信号）+ 每日 digest（L2 素材切片源）
 - 输出：Markdown 报告 + 策略条目 + 可选 DM 通知 + recall-log（NDJSON，可回灌）
 - 依赖：Python 3 标准库（压缩会话解压走外部 `zstd` 命令，缺失时显式降级）；LLM 归因/洞察可选（缺失时降级为不调用，明确标注）
 - 适配：OpenClaw / Claude Code / Codex / Cursor 均可（只需改 config.json 里的路径）

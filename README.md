@@ -32,6 +32,7 @@
 | 3 追踪 | `--trend` | 本期 vs 上期事故数变化 |
 | 4 落策略 | 人工按模板写 | `policy/` 下带版本号的四要素条目 |
 | 5 记忆巩固 | `auto_dream.py --config config.json --attr` | Auto Dream 报告（**触发闸 + 三重门槛 + 五动作，只出建议**） |
+| 6 记忆切片 | `memory_draft.py --config memory.config.json` | digest → `drafts/` 素材切片 + 待提炼清单（**只搬素材，不写记忆**） |
 
 ### 关键设计 1：区分「事故」与「条款」
 
@@ -144,6 +145,7 @@ Auto Dream 建议**每小时探测**（闸门自判到点；未到点 `exit 3` �
 SKILL.md                     Agent Skill 标准格式（触发/策略/终止/复用接口）
 scripts/recurrence_scan.py   核心脚本（扫描+归因+追踪）
 scripts/auto_dream.py        Auto Dream（L4 记忆巩固：触发闸 + 三重门槛 + 五动作）
+scripts/memory_draft.py      L2 写入通道（digest → drafts 素材切片 + 待提炼清单）
 scripts/memory_recall.py     recall-log 协议（三重门槛的权威召回信号）
 scripts/gate.py              通用出口断言框架
 templates/config.example.json
@@ -167,5 +169,8 @@ This repo is an engineering kit, not a prompt:
 5. **Dream** — Claude-Code-L4-style memory consolidation (merge duplicates / drop stale /
    distill patterns / refresh index / cross-session insights), gated to run only after
    **24 hours AND 5 new sessions**; report-only, never auto-edits.
+6. **Draft channel** — `memory_draft.py` mechanically slices new session digests into
+   `drafts/` plus a "to distill" list, so L2 memory never depends on *remembering to write*;
+   the semantic step (what becomes memory) stays human-approved.
 
 MIT. PRs welcome.
